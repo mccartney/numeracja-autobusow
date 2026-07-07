@@ -103,24 +103,31 @@ def build_html(vehicles) -> str:
     present = sorted(grid)
     total = sum(len(row) for row in grid.values())
 
-    thead = ['<tr><th class="corner">nr</th>']
-    thead += [f'<th class="colh">{c:02d}</th>' for c in range(100)]
-    thead.append("</tr>")
-
-    body = []
+    columns = []
     prev = None
     for prefix in present:
         if prev is not None and prefix - prev > 1:
             missing = prefix - prev - 1
-            body.append(
-                f'<tr class="gap"><td class="gaplabel" colspan="101">'
-                f'{missing} skipped ({prev+1:02d}xx–{prefix-1:02d}xx)</td></tr>'
-            )
+            columns.append({"gap": missing, "range": f"{prev+1:02d}xx–{prefix-1:02d}xx"})
+        columns.append({"prefix": prefix})
         prev = prefix
-        cells = [f'<th class="rowh">{prefix}xx</th>']
-        row = grid[prefix]
-        for c in range(100):
-            v = row.get(c)
+
+    thead = ['<tr><th class="corner">nr</th>']
+    for col in columns:
+        if "gap" in col:
+            thead.append(f'<th class="gapcol" title="{col["gap"]} skipped ({col["range"]})"></th>')
+        else:
+            thead.append(f'<th class="colh">{col["prefix"]}xx</th>')
+    thead.append("</tr>")
+
+    body = []
+    for suffix in range(100):
+        cells = [f'<th class="rowh">{suffix:02d}</th>']
+        for col in columns:
+            if "gap" in col:
+                cells.append('<td class="gapcol"></td>')
+                continue
+            v = grid[col["prefix"]].get(suffix)
             if v is None:
                 cells.append('<td class="empty"></td>')
             else:
@@ -156,17 +163,15 @@ def build_html(vehicles) -> str:
   .sub {{ color: #666; font-size: 13px; margin-bottom: 16px; }}
   .scroll {{ overflow-x: auto; border: 1px solid #ddd; border-radius: 6px; }}
   table {{ border-collapse: collapse; font-size: 10px; }}
-  th, td {{ width: 34px; height: 22px; text-align: center; box-sizing: border-box; }}
-  thead th {{ position: sticky; top: 0; background: #fafafa; z-index: 2; }}
-  .corner, .rowh {{ position: sticky; left: 0; background: #f0f0f0; font-weight: 600; z-index: 1; }}
+  th, td {{ width: 40px; height: 20px; text-align: center; box-sizing: border-box; }}
+  thead th {{ position: sticky; top: 0; background: #fafafa; z-index: 2; color: #555; font-weight: 600; }}
+  .corner, .rowh {{ position: sticky; left: 0; background: #f0f0f0; font-weight: 600; z-index: 1; color: #888; }}
   thead .corner {{ z-index: 3; }}
-  .colh {{ color: #888; font-weight: 500; }}
-  .rowh {{ padding: 0 6px; width: auto; }}
   td.c {{ color: #111; border: 1px solid rgba(255,255,255,0.6); font-variant-numeric: tabular-nums; }}
   td.empty {{ background: #fcfcfc; border: 1px solid #f2f2f2; }}
-  tr.gap td {{ height: 10px; padding: 0; }}
-  .gaplabel {{ background: repeating-linear-gradient(45deg,#fff,#fff 6px,#f4f4f4 6px,#f4f4f4 12px);
-    color: #aaa; font-size: 9px; font-style: italic; text-align: left; padding-left: 8px; }}
+  .gapcol {{ width: 10px; min-width: 10px; padding: 0;
+    background: repeating-linear-gradient(45deg,#fff,#fff 5px,#f0f0f0 5px,#f0f0f0 10px); }}
+  thead .gapcol {{ background: repeating-linear-gradient(45deg,#fafafa,#fafafa 5px,#e8e8e8 5px,#e8e8e8 10px); }}
   .legend {{ margin: 16px 0 4px; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; }}
   .leg {{ display: inline-flex; align-items: center; gap: 5px; }}
   .sw {{ width: 13px; height: 13px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.12); display: inline-block; }}
