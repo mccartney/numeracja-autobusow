@@ -21,7 +21,17 @@ CARRIERS = {
     "17": "ReloBus",
 }
 
+HEADERS = {
+    "User-Agent": UA,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "pl-PL,pl;q=0.9,en;q=0.8",
+    "Referer": BASE,
+}
+
+MIN_VEHICLES = 800
+
 CACHE = Path(".cache")
+DATA = Path("vehicles.json")
 ROW_RE = re.compile(r'<a\b[^>]*class="grid-row-active"[^>]*>(.*?)</a>', re.S)
 CELL_RE = re.compile(r'role="cell"[^>]*>(.*?)</div>', re.S)
 LAST_PAGE_RE = re.compile(r"/page/(\d+)/")
@@ -32,7 +42,7 @@ def fetch(url: str) -> str:
     path = CACHE / key
     if path.exists():
         return path.read_text(encoding="utf-8")
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "text/html"})
+    req = urllib.request.Request(url, headers=HEADERS)
     for attempt in range(4):
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
@@ -96,7 +106,7 @@ def type_color(producent: str, typ: str) -> str:
     return f"#{int(r*255):02x}{int(g*255):02x}{int(b*255):02x}"
 
 
-def build_html(vehicles) -> str:
+def build_html(vehicles, generated) -> str:
     grid = {}
     types = {}
     for v in vehicles:
@@ -222,7 +232,7 @@ def build_html(vehicles) -> str:
 <body>
   <h1>Numeracja autobusów WTP (ZTM Warszawa)</h1>
   <div class="sub">{total} pojazdów · {carrier_line} · numery 1000–9999 · kolor = producent + typ</div>
-  <div class="sub">źródło: <a href="{BASE}?ztm_traction=1">Baza danych pojazdów ZTM Warszawa</a> · zaktualizowano {datetime.datetime.now(datetime.timezone.utc):%Y-%m-%d}</div>
+  <div class="sub">źródło: <a href="{BASE}?ztm_traction=1">Baza danych pojazdów ZTM Warszawa</a> · zaktualizowano {generated}</div>
   <div class="scroll"><table>
     <thead>{''.join(thead)}</thead>
     <tbody>{''.join(body)}</tbody>
@@ -232,12 +242,39 @@ def build_html(vehicles) -> str:
 """
 
 
+def in_range_count(vehicles) -> int:
+    return sum(1 for v in vehicles if v["number"].isdigit() and 1000 <= int(v["number"]) <= 9999)
+
+
+def load_saved():
+    if not DATA.exists():
+        return None, []
+    data = json.loads(DATA.read_text(encoding="utf-8"))
+    if isinstance(data, dict):
+        return data.get("generated"), data.get("vehicles", [])
+    return None, data
+
+
 def main():
-    vehicles = scrape()
-    Path("vehicles.json").write_text(json.dumps(vehicles, ensure_ascii=False, indent=2), encoding="utf-8")
-    out = build_html(vehicles)
-    Path("numeracja.html").write_text(out, encoding="utf-8")
-    print(f"{len(vehicles)} vehicles scraped -> numeracja.html")
+    today = f"{datetime.datetime.now(datetime.timezone.utc):%Y-%m-%d}"
+    scraped = scrape()
+    if in_range_count(scraped) >= MIN_VEHICLES:
+        vehicles, generated = scraped, today
+        DATA.write_text(
+            json.dumps({"generated": generated, "vehicles": vehicles}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        print(f"{len(vehicles)} vehicles scraped ({generated})")
+    else:
+        print(f"WARNING: scrape yielded only {in_range_count(scraped)} in-range vehicles "
+              f"(site likely blocked this network); falling back to committed data")
+        generated, vehicles = load_saved()
+        if in_range_count(vehicles) < MIN_VEHICLES:
+            raise SystemExit("ERROR: no usable data — fresh scrape blocked and no committed fallback")
+        print(f"using committed data from {generated} ({len(vehicles)} vehicles)")
+
+    Path("numeracja.html").write_text(build_html(vehicles, generated), encoding="utf-8")
+    print("wrote numeracja.html")
 
 
 if __name__ == "__main__":
