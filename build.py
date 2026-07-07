@@ -2,6 +2,7 @@
 """Scrape the Warsaw ZTM vehicle database (buses) and render a numbering grid."""
 
 import colorsys
+import datetime
 import hashlib
 import html
 import json
@@ -32,8 +33,16 @@ def fetch(url: str) -> str:
     if path.exists():
         return path.read_text(encoding="utf-8")
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "text/html"})
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        text = resp.read().decode("utf-8")
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                text = resp.read().decode("utf-8")
+            break
+        except Exception as exc:
+            if attempt == 3:
+                raise
+            print(f"retry {attempt+1} for {url}: {exc}")
+            time.sleep(2 * (attempt + 1))
     CACHE.mkdir(exist_ok=True)
     path.write_text(text, encoding="utf-8")
     time.sleep(0.4)
@@ -213,7 +222,7 @@ def build_html(vehicles) -> str:
 <body>
   <h1>Numeracja autobusów WTP (ZTM Warszawa)</h1>
   <div class="sub">{total} pojazdów · {carrier_line} · numery 1000–9999 · kolor = producent + typ</div>
-  <div class="sub">źródło: <a href="{BASE}?ztm_traction=1">Baza danych pojazdów ZTM Warszawa</a></div>
+  <div class="sub">źródło: <a href="{BASE}?ztm_traction=1">Baza danych pojazdów ZTM Warszawa</a> · zaktualizowano {datetime.datetime.now(datetime.timezone.utc):%Y-%m-%d}</div>
   <div class="scroll"><table>
     <thead>{''.join(thead)}</thead>
     <tbody>{''.join(body)}</tbody>
