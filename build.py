@@ -103,6 +103,8 @@ def build_html(vehicles) -> str:
     present = sorted(grid)
     total = sum(len(row) for row in grid.values())
 
+    prefix_carrier = {p: next(iter(row.values()))["carrier"] for p, row in grid.items()}
+
     columns = []
     prev = None
     for prefix in present:
@@ -112,13 +114,37 @@ def build_html(vehicles) -> str:
         columns.append({"prefix": prefix})
         prev = prefix
 
-    thead = ['<tr><th class="corner">nr</th>']
+    def col_carrier(i):
+        col = columns[i]
+        if "prefix" in col:
+            return prefix_carrier[col["prefix"]]
+        left = prefix_carrier[columns[i - 1]["prefix"]]
+        right = prefix_carrier[columns[i + 1]["prefix"]]
+        return left if left == right else None
+
+    runs = []
+    for i in range(len(columns)):
+        car = col_carrier(i)
+        if runs and runs[-1][0] == car and car is not None:
+            runs[-1][1] += 1
+        else:
+            runs.append([car, 1])
+
+    group_row = ['<th class="corner cg-corner"></th>']
+    for car, span in runs:
+        if car is None:
+            group_row.append(f'<th class="gempty" colspan="{span}"></th>')
+        else:
+            group_row.append(f'<th class="gcell" colspan="{span}">{car}</th>')
+
+    prefix_row = ['<th class="corner">nr</th>']
     for col in columns:
         if "gap" in col:
-            thead.append(f'<th class="gapcol" title="{col["gap"]} skipped ({col["range"]})"></th>')
+            prefix_row.append(f'<th class="gapcol" title="{col["gap"]} skipped ({col["range"]})"></th>')
         else:
-            thead.append(f'<th class="colh">{col["prefix"]}xx</th>')
-    thead.append("</tr>")
+            prefix_row.append(f'<th class="colh">{col["prefix"]}xx</th>')
+
+    thead = ['<tr class="grow">', *group_row, "</tr>", '<tr class="prow">', *prefix_row, "</tr>"]
 
     body = []
     for suffix in range(100):
@@ -155,31 +181,39 @@ def build_html(vehicles) -> str:
 
     return f"""<!DOCTYPE html>
 <html lang="pl"><head><meta charset="utf-8">
-<title>Numeracja autobusów ZTM Warszawa</title>
+<title>Numeracja autobusów WTP (ZTM Warszawa)</title>
 <style>
   :root {{ font-family: -apple-system, system-ui, sans-serif; }}
   body {{ margin: 24px; color: #1b1b1b; }}
   h1 {{ font-size: 20px; margin: 0 0 4px; }}
-  .sub {{ color: #666; font-size: 13px; margin-bottom: 16px; }}
-  .scroll {{ overflow-x: auto; border: 1px solid #ddd; border-radius: 6px; }}
+  .sub {{ color: #666; font-size: 13px; margin-bottom: 3px; }}
+  .sub a {{ color: #06c; }}
+  .scroll {{ overflow-x: auto; border: 1px solid #ddd; border-radius: 6px; margin-top: 14px; }}
   table {{ border-collapse: collapse; font-size: 10px; }}
   th, td {{ width: 40px; height: 20px; text-align: center; box-sizing: border-box; }}
-  thead th {{ position: sticky; top: 0; background: #fafafa; z-index: 2; color: #555; font-weight: 600; }}
+  thead th {{ position: sticky; background: #fafafa; z-index: 2; color: #555; font-weight: 600; }}
+  thead .grow th {{ top: 0; height: 22px; }}
+  thead .prow th {{ top: 22px; }}
+  .gcell {{ background: #eef1f4; color: #333; border-bottom: 1px solid #d5d5d5;
+    border-left: 2px solid #fff; border-right: 2px solid #fff; }}
+  .gempty {{ background: #fafafa; border: none; }}
   .corner, .rowh {{ position: sticky; left: 0; background: #f0f0f0; font-weight: 600; z-index: 1; color: #888; }}
-  thead .corner {{ z-index: 3; }}
+  thead .corner {{ z-index: 4; }}
+  .cg-corner {{ top: 0; }}
   td.c {{ color: #111; border: 1px solid rgba(255,255,255,0.6); font-variant-numeric: tabular-nums; }}
   td.empty {{ background: #fcfcfc; border: 1px solid #f2f2f2; }}
-  .gapcol {{ width: 10px; min-width: 10px; padding: 0;
-    background: repeating-linear-gradient(45deg,#fff,#fff 5px,#f0f0f0 5px,#f0f0f0 10px); }}
-  thead .gapcol {{ background: repeating-linear-gradient(45deg,#fafafa,#fafafa 5px,#e8e8e8 5px,#e8e8e8 10px); }}
+  .gapcol {{ width: 4px; min-width: 4px; padding: 0;
+    background: repeating-linear-gradient(45deg,#fff,#fff 3px,#f0f0f0 3px,#f0f0f0 6px); }}
+  thead .gapcol {{ background: repeating-linear-gradient(45deg,#fafafa,#fafafa 3px,#e8e8e8 3px,#e8e8e8 6px); }}
   .legend {{ margin: 16px 0 4px; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; }}
   .leg {{ display: inline-flex; align-items: center; gap: 5px; }}
   .sw {{ width: 13px; height: 13px; border-radius: 3px; border: 1px solid rgba(0,0,0,0.12); display: inline-block; }}
   .cnt {{ color: #999; }}
 </style></head>
 <body>
-  <h1>Numeracja autobusów ZTM Warszawa</h1>
+  <h1>Numeracja autobusów WTP (ZTM Warszawa)</h1>
   <div class="sub">{total} pojazdów · {carrier_line} · numery 1000–9999 · kolor = producent + typ</div>
+  <div class="sub">źródło: <a href="{BASE}?ztm_traction=1">Baza danych pojazdów ZTM Warszawa</a></div>
   <div class="scroll"><table>
     <thead>{''.join(thead)}</thead>
     <tbody>{''.join(body)}</tbody>
